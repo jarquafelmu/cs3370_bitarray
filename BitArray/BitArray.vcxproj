@@ -122,10 +122,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="main.cpp">
-      <SubType>
-      </SubType>
-    </ClCompile>
     <ClCompile Include="tbitarray.cpp" />
   </ItemGroup>
   <ItemGroup>

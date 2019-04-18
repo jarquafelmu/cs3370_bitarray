@@ -31,13 +31,14 @@ class BitArray
 	{
 		// Bitproxy is called 'reference' in `bits.cpp
 		size_t pos_;
-		BitArray b_;
+		BitArray& b_;
 	public:
 		Bitproxy( BitArray& bit_array, size_t const& pos ) : b_ { bit_array } { pos_ = pos; }
 		Bitproxy& operator=( bool const bit )
 		{
 			// set the bit in position pos to true or false; per bit
 			b_.assign_bit ( pos_, bit );
+			std::cout << b_.to_string() << std::endl;
 			return *this;
 		}
 
@@ -62,6 +63,9 @@ class BitArray
 	void grow(size_t const& nbits)
 	{
 		auto space_required = words_needed ( nbits );
+
+		if ( space_required == 0 && bits_.empty () && nbits != 0 ) space_required = 1;
+
 		if (space_required > bits_.size ())
 		{
 			bits_.resize ( space_required );
@@ -75,11 +79,11 @@ class BitArray
 	size_t nbits_ {}; // the number of bits currently in use
 
 protected:
-	bool read_bit( size_t const& bitpos ) const
+	int read_bit( size_t const& bitpos ) const
 	{
-		// get which element contains our bit
-		// get which element contains our bit
+		if ( bitpos >= nbits_ || bitpos < 0 || nbits_ == 0 ) throw std::logic_error ( "index out of range" );
 
+		// get which element contains our bit
 		auto word = read_word ( bitpos );
 		auto const offset = bit_offset ( bitpos ); // 18 = 50 % 32
 
@@ -156,12 +160,11 @@ protected:
 	size_t count_ones( IType word ) const
 	{
 		//tidy ();
-		auto tempVec = bits_;
-		clean_word ( tempVec.back () );
-
+		auto temp = bits_;
+		clean_word ( temp.back () );
 
 		auto count { 0 };
-		std::for_each ( tempVec.begin (), tempVec.end (), [&count]( auto& item )
+		std::for_each ( temp.begin (), temp.end (), [&count]( auto& item )
 		{
 			for ( auto i { 0 }; i < BITS_PER_WORD; ++i )
 			{
@@ -184,16 +187,19 @@ protected:
 		}
 	}
 
-	static std::string display_word( IType word )
+	static std::string display_word( IType word, size_t& bits_to_display )
 	{
+		if ( bits_to_display <= 0 ) return "";
+
 		std::stringstream ss;
 		// logic might need to be reversed
 		// for ( auto i = sizeof ( IType ) - 1; i >= 0 ; --i) {
-		for ( auto i = 0; i < sizeof ( IType ) - 1; ++i )
+		for ( auto i = 0; i < BITS_PER_WORD - 1 && bits_to_display > 0; ++i )
 		{
 			// shifts word to the right by the amount indicated by i
 			// then ANDs with 1 to remove everything but the least significant bit
 			ss << ( ( word >> i ) & 1 );
+			--bits_to_display;
 		}
 		return ss.str ();
 	}
@@ -203,7 +209,11 @@ public:
 
 	explicit BitArray( size_t const nbits = 0 ) // create an object of nbits if argument > 0
 	{
-		if ( nbits > 0 ) { grow ( nbits ); }
+		if ( nbits > 0 )
+		{
+			grow ( nbits );
+			nbits_ = nbits;
+		}
 	};
 
 	explicit BitArray( const std::string& str )
@@ -211,7 +221,7 @@ public:
 		// expects a string of `0` or `1`. Any other character (including whitespace) gets `runtime_error`
 		auto iter = std::find_if ( str.begin (), str.end (), []( int const c ) { return c != '1' && c != '0'; } );
 		// if iter is not the end of str then a character other than `0` or `1` was found
-		if ( iter != str.end () ) { throw std::runtime_error ( "invalid character found: '" + display_word ( *iter ) + "'" ); }
+		if ( iter != str.end () ) { throw std::runtime_error ( "invalid character found." ); }
 	}
 
 	BitArray( BitArray const& other ) = default; // Copy Constructor
@@ -451,7 +461,11 @@ public:
 	std::string to_string() const
 	{
 		std::ostringstream ss;
-		if ( !bits_.empty () ) { for ( auto const& item : bits_ ) { ss << display_word ( item ); } }
+		if ( !bits_.empty () )
+		{
+			auto bits_to_display = nbits_;
+			for ( auto const& item : bits_ ) { ss << display_word ( item, bits_to_display ); }
+		}
 		return ss.str ();
 	}
 };
