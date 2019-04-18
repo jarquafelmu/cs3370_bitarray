@@ -155,34 +155,36 @@ protected:
 	// counts bits set in bitarray
 	size_t count_ones( IType word ) const
 	{
-		// clean the last word
-		bits_[bits_.size() - 1] = clean_word ( bits_.back () );
+		//tidy ();
+		auto tempVec = bits_;
+		clean_word ( tempVec.back () );
+
 
 		auto count { 0 };
-		std::for_each ( bits_.begin (), bits_.end (), [&count]( auto const& item )
+		std::for_each ( tempVec.begin (), tempVec.end (), [&count]( auto& item )
 		{
-			auto temp = item;
 			for ( auto i { 0 }; i < BITS_PER_WORD; ++i )
 			{
-				count += temp & 1u;
-				temp >>= 1u;
+				count += item & 1u;
+				item >>= 1u;
 			}
 		} );
 		return count;
 	}
 
-	IType clean_word( IType word, size_t nbits ) // reset unused bits in last word
+	void clean_word ( IType& word ) const // reset unused bits in last word
 	{
-		auto used_bits = nbits % BITS_PER_WORD;
+		auto used_bits = nbits_ % BITS_PER_WORD;
 		if (used_bits)
 		{
+			// create a mask which places 1's where are used bits are
+			// and 0's where our dirty bits are
 			IType mask = ( IType ( 1 ) << used_bits ) - 1;
 			word &= mask;
 		}
-		return word;
-	} 
+	}
 
-	std::string to_string( IType word )
+	static std::string display_word( IType word )
 	{
 		std::stringstream ss;
 		// logic might need to be reversed
@@ -209,22 +211,26 @@ public:
 		// expects a string of `0` or `1`. Any other character (including whitespace) gets `runtime_error`
 		auto iter = std::find_if ( str.begin (), str.end (), []( int const c ) { return c != '1' && c != '0'; } );
 		// if iter is not the end of str then a character other than `0` or `1` was found
-		if ( iter != str.end () ) { throw std::runtime_error ( "invalid character found: '" + to_string ( *iter ) + "'" ); }
+		if ( iter != str.end () ) { throw std::runtime_error ( "invalid character found: '" + display_word ( *iter ) + "'" ); }
 	}
 
 	BitArray( BitArray const& other ) = default; // Copy Constructor
 
 	auto operator=( BitArray const& other ) -> BitArray& = default; // Copy assignment
 
-	BitArray( BitArray&& other ) noexcept // Move Constructor
-		: bits_ ( std::move ( other.bits_ ), nbits_ (std::move ( other.nbits_ )) ) { std::cout << "move constructor" << std::endl; }
 
-	auto operator=( BitArray&& other ) noexcept -> BitArray& // Move Assignment	
+
+	BitArray( BitArray&& other ) noexcept
+		: bits_ ( std::move(other.bits_) ),
+			nbits_ ( other.nbits_ ) {}
+
+
+	auto operator=( BitArray&& other ) noexcept -> BitArray&
 	{
-		std::cout << "move assignment" << std::endl;
-		if ( this == &other ) { return *this; }
+		if ( this == &other )
+			return *this;
 		bits_ = std::move ( other.bits_ );
-		nbits_ = std::move ( other.nbits_ );
+		nbits_ = other.nbits_;
 		return *this;
 	}
 
@@ -241,7 +247,7 @@ public:
 	BitArray& operator+=( const BitArray& b ) // Append a BitArray
 	{		
 		// increase our count of bits by how many bits we are inserting
-		for ( auto i {}; i < b.size (); ++i )
+		for ( size_t i {}; i < b.size (); ++i )
 		{
 			*this += b [i];
 		}
@@ -260,16 +266,17 @@ public:
 		assign_bit ( bitpos, val );
 	}
 
+	 // Insert an entire BitArray object
 	void insert( size_t bitpos, const BitArray& b )
 	{
 		auto additional_size = b.size ();
 		nbits_ += additional_size;
 		grow ();
-		for ( auto i {}; i < additional_size; ++i)
+		for ( size_t i {}; i < additional_size; ++i)
 		{
-			
+			left_shift_at ( bitpos );
 		}
-	} // Insert an entire BitArray object
+	}
 
 	void shrink_to_fit()
 	{
@@ -302,7 +309,7 @@ public:
 		// for each word XOR it with a full one mask
 		auto mask { ~0u };
 		std::transform ( bits_.begin (), bits_.end (), bits_.begin (),
-			[&mask]( auto const& word ) { return word ^= mask; } );
+			[&mask]( auto& word ) { return word ^= mask; } );
 	}
 
 	BitArray operator~() const
@@ -312,14 +319,14 @@ public:
 		return new_b;
 	}
 
-	void left_shift_at( size_t const& bitpos ) const
+	void left_shift_at( size_t const& bitpos )
 	{
 		for ( auto i { bitpos }; i < nbits_; ++i ) {
 			assign_bit ( wrap_index ( i ), read_bit ( wrap_index ( i + 1 ) ) );
 		}
 	}
 
-	void right_shift_at(size_t const& bitpos) const
+	void right_shift_at(size_t const& bitpos)
 	{
 		for ( auto i { bitpos }; i < nbits_; ++i ) {
 			assign_bit ( wrap_index ( i + 1 ), read_bit ( wrap_index ( i ) ) );
@@ -330,19 +337,19 @@ public:
 	BitArray operator<<( unsigned int shift_amt ) const // shift temp left
 	{
 		auto temp = *this;
-		return temp << shift_amt;
+		return temp.operator<<=(shift_amt);
 	}
 	BitArray operator>>( unsigned int shift_amt ) const // shift temp right
 	{
 		auto temp = *this;
-		return temp >> shift_amt;
+		return temp.operator>>=( shift_amt );
 	}
-	BitArray& operator<<=( unsigned int shift_amt ) const // shift self left
+	BitArray& operator<<=( unsigned int shift_amt ) // shift self left
 	{
 		left_shift_at ( 0 );
 		return *this;
 	}
-	BitArray& operator>>=( unsigned int shift_amt ) const // shift self right
+	BitArray& operator>>=( unsigned int shift_amt ) // shift self right
 	{
 		right_shift_at ( 0 );
 		return *this;
@@ -403,8 +410,8 @@ public:
 	friend auto operator>>( std::istream& is, BitArray& obj ) -> std::istream&
 	{
 		IType word {};
-		bits_.clear ();
-		bits_.shrink_to_fit ();
+		obj.bits_.clear ();
+		obj.bits_.shrink_to_fit ();
 
 		auto count { 0 };
 		auto const max_size { sizeof ( IType ) };
@@ -444,7 +451,7 @@ public:
 	std::string to_string() const
 	{
 		std::ostringstream ss;
-		if ( !bits_.empty () ) { for ( auto const& item : bits_ ) { ss << to_string ( item ); } }
+		if ( !bits_.empty () ) { for ( auto const& item : bits_ ) { ss << display_word ( item ); } }
 		return ss.str ();
 	}
 };
