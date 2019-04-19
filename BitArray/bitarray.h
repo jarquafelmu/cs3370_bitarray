@@ -27,6 +27,10 @@ template <class IType = size_t>
 // throw `logic_error` if any out-of-range indexing is attempted anywhere
 class BitArray
 {
+	enum { BITS_PER_WORD = CHAR_BIT * sizeof ( IType ) };
+	std::vector<IType> bits_ {}; // a collection to store our bits
+	size_t nbits_ {}; // the number of bits currently in use
+
 	class Bitproxy final
 	{
 		// Bitproxy is called 'reference' in `bits.cpp
@@ -42,6 +46,15 @@ class BitArray
 			return *this;
 		}
 
+		Bitproxy& operator=( Bitproxy& obj )
+		{
+			if ( this == &obj ) return *this;
+			b_ = obj.b_;
+			pos_ = obj.pos_;
+			return *this;
+		}
+
+		// ReSharper disable once CppNonExplicitConversionOperator
 		operator bool() const
 		{
 			// return true or false per the bit in position pos_
@@ -71,12 +84,6 @@ class BitArray
 			bits_.resize ( space_required );
 		}
 	}
-
-	enum { BITS_PER_WORD = CHAR_BIT * sizeof ( IType ) };
-
-	std::vector<IType> bits_ {}; // a collection to store our bits
-
-	size_t nbits_ {}; // the number of bits currently in use
 
 protected:
 	int read_bit( size_t const& bitpos ) const
@@ -164,7 +171,7 @@ protected:
 		clean_word ( temp.back () );
 
 		auto count { 0 };
-		std::for_each ( temp.begin (), temp.end (), [&count]( auto& item )
+		std::for_each ( temp.begin (), temp.end (), [&]( auto& item )
 		{
 			for ( auto i { 0 }; i < BITS_PER_WORD; ++i )
 			{
@@ -222,6 +229,12 @@ public:
 		auto iter = std::find_if ( str.begin (), str.end (), []( int const c ) { return c != '1' && c != '0'; } );
 		// if iter is not the end of str then a character other than `0` or `1` was found
 		if ( iter != str.end () ) { throw std::runtime_error ( "invalid character found." ); }
+
+		// if reached then our string was good, now we need to bring it in
+		std::for_each ( str.begin (), str.end (), [&]( auto const& character )
+		{
+			operator+= ( character == '1' );
+		});
 	}
 
 	BitArray( BitArray const& other ) = default; // Copy Constructor
@@ -331,15 +344,18 @@ public:
 
 	void left_shift_at( size_t const& bitpos )
 	{
-		for ( auto i { bitpos }; i < nbits_; ++i ) {
-			assign_bit ( wrap_index ( i ), read_bit ( wrap_index ( i + 1 ) ) );
+		for ( auto i { bitpos }; i < nbits_ - 1; ++i ) {
+			assign_bit ( i, read_bit ( i + 1 ) );
+			// assign_bit ( wrap_index ( i ), read_bit ( wrap_index ( i + 1 ) ) );
 		}
 	}
 
 	void right_shift_at(size_t const& bitpos)
 	{
-		for ( auto i { bitpos }; i < nbits_; ++i ) {
-			assign_bit ( wrap_index ( i + 1 ), read_bit ( wrap_index ( i ) ) );
+		for ( auto i { nbits_ - 1 }; i >= 0; --i ) {
+			//assign_bit ( wrap_index ( i + 1 ), read_bit ( wrap_index ( i ) ) );
+			assign_bit ( i, read_bit (  i - 1  ) );
+			std::cout << to_string() << std::endl;
 		}
 	}
 
