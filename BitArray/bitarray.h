@@ -42,7 +42,6 @@ class BitArray
 		{
 			// set the bit in position pos to true or false; per bit
 			b_.assign_bit ( pos_, bit );
-			std::cout << b_.to_string() << std::endl;
 			return *this;
 		}
 
@@ -57,8 +56,7 @@ class BitArray
 		// ReSharper disable once CppNonExplicitConversionOperator
 		operator bool() const
 		{
-			// return true or false per the bit in position pos_
-			// return b_.data & (1u << pos);
+			if ( b_.empty () ) throw std::logic_error ( "out of bounds" );
 			return b_.read_bit ( pos_ );
 		}
 	};
@@ -75,14 +73,70 @@ class BitArray
 
 	void grow(size_t const& nbits)
 	{
-		auto space_required = words_needed ( nbits );
+		auto space_required = words_needed ( nbits ) + 1;
 
-		if ( space_required == 0 && bits_.empty () && nbits != 0 ) space_required = 1;
-
-		if (space_required > bits_.size ())
+		for ( auto i {0}; i < space_required - bits_.size (); ++i)
 		{
-			bits_.resize ( space_required );
+			bits_.push_back ( IType {} );
 		}
+		// if (space_required > bits_.size ())
+		// {
+		// 	bits_.resize ( space_required );
+		// }
+	}
+
+/// <summary>
+/// Compares the provided BitArray against this BitArray
+/// </summary>
+/// <param name="b">The BitArray to be compared.</param>
+/// <returns>
+///		Returns an integer which denotes the comparison result.
+/// <list type="bullet">
+/// <item>
+/// <description><c>-1:</c> Provided BitArray is less than this BitArray</description>
+/// </item>
+/// <item>
+/// <description><c>0:</c> Provided BitArray is equal to this BitArray</description>
+/// </item>
+/// <item>
+/// <description><c>1:</c> Provided BitArray is greater than this BitArray</description>
+/// </item>
+/// </list>
+/// </returns>
+	int comp ( BitArray const& b )
+	{
+		auto retVal { 0 };
+		auto comp_length { 0 };
+		auto this_bit_str {to_string ()};
+		auto bit_str = b.to_string ();
+			
+		// determine our comparison length and default compare result.
+		if ( this_bit_str.length () < bit_str.length ())
+		{
+			retVal = 1;
+			comp_length = this_bit_str.length ();
+		} else if ( this_bit_str.length () > bit_str.length () )
+		{
+			retVal = -1;
+			comp_length = bit_str.length ();
+		} else
+		{
+			retVal = 0;
+			comp_length = bit_str.length ();
+		}
+
+		for ( auto i {0}; i < comp_length; ++i )
+		{
+			if ( bit_str [i] != this_bit_str [i] )
+			{
+				// 1 - 0 = 1
+				// 0 - 1 = -1
+				retVal = bit_str [i] - this_bit_str [i];
+				break;
+			}
+		}
+			 
+		return retVal;
 	}
 
 protected:
@@ -100,11 +154,14 @@ protected:
 
 	void assign_bit( size_t const& bitpos, bool bit )
 	{
-		// either sets or resets the bit in logical position `pos`, 
-		// depending ont the value of `bit`
-		
+		// gets the word to assign the bit to gets a new word if we are empty
+
+		// since we have nothing, create our self big enough to handle the incoming bit
+		grow ();
+
+		// get the word and bit offset represented by the bitpos
 		auto word = read_word ( bitpos );
-		auto const offset = bit_offset ( bitpos ); // 18 = 50 % 32
+		auto const offset = bit_offset ( bitpos );
 
 		// if we are setting the bit then we want a 1 mask
 		// if we are resetting the bit then we want a 0 mask
@@ -149,8 +206,13 @@ protected:
 
 	IType read_word( size_t const& bitpos ) const
 	{
-		auto block = word_offset ( bitpos ); 
-		return bits_.at ( block );
+		auto block = word_offset ( bitpos );
+		try {
+			return bits_.at ( block );
+		} catch (std::out_of_range& e)
+		{
+			throw std::logic_error ( e.what () );
+		}
 	}
 
 	void set_word( IType word, size_t const& bitpos )
@@ -241,12 +303,11 @@ public:
 
 	auto operator=( BitArray const& other ) -> BitArray& = default; // Copy assignment
 
-
-
 	BitArray( BitArray&& other ) noexcept
 		: bits_ ( std::move(other.bits_) ),
-			nbits_ ( other.nbits_ ) {}
-
+			nbits_ ( other.nbits_ ) {
+		std::cout << "move constructor" << std::endl;
+	}
 
 	auto operator=( BitArray&& other ) noexcept -> BitArray&
 	{
@@ -254,6 +315,7 @@ public:
 			return *this;
 		bits_ = std::move ( other.bits_ );
 		nbits_ = other.nbits_;
+		std::cout << "move assignment" << std::endl;
 		return *this;
 	}
 
@@ -264,9 +326,10 @@ public:
 		grow ( ++nbits_ );
 
 		// assign the new bit to the new spot
-		assign_bit ( nbits_, val );
+		assign_bit ( nbits_ - 1, val );
 		return *this;
 	}
+
 	BitArray& operator+=( const BitArray& b ) // Append a BitArray
 	{		
 		// increase our count of bits by how many bits we are inserting
@@ -277,46 +340,75 @@ public:
 		return *this;
 	}
 
-	void erase( size_t bitpos, size_t nbits = 1 ) {} // Remove "nbits" bits at a position
-	void insert( size_t bitpos, bool val )           // Insert a bit at a position (slide "right")
+	// Remove "nbits" bits at a position
+	void erase( size_t const& bitpos, size_t const& nbits = 1 )
 	{
-		// if insert at end, just append bit and increment `nbits_`
+		BitArray temp {};
+		auto const end = bitpos + nbits - 1;
+		for ( auto i { 0 }; i < nbits_; ++i)
+		{
+			if ( i < bitpos || i > end )
+				temp += read_bit ( i );
+		}
+		//
+		// std::swap ( bits_, temp.bits_ );
+		// std::swap ( nbits_, temp.nbits_ );
 
-		// if insert at beginning or somewhere else, slide all bits one to the right,
-		// to the right of that spot, insert bit, then increment `nbits_`
-		grow ( ++nbits_ );
-		left_shift_at ( bitpos );
-		assign_bit ( bitpos, val );
+		*this = std::move ( temp );
+	} 
+
+	void insert( size_t const bitpos, bool val )           // Insert a bit at a position (slide "right")
+	{
+		BitArray temp {};
+
+		for ( auto i { 0 }; i < nbits_; ++i ) {
+			if ( i == bitpos )
+				temp += val;
+			temp += read_bit ( i );
+		}
+
+		*this = std::move ( temp );
 	}
 
 	 // Insert an entire BitArray object
-	void insert( size_t bitpos, const BitArray& b )
+	void insert( size_t const bitpos, const BitArray& b )
 	{
-		auto additional_size = b.size ();
-		nbits_ += additional_size;
-		grow ();
-		for ( size_t i {}; i < additional_size; ++i)
-		{
-			left_shift_at ( bitpos );
+		BitArray temp {};
+
+		for ( size_t i {}; i < nbits_; ++i ) {
+			if ( i == bitpos )
+				temp += b;
+			temp += read_bit ( i );
 		}
+
+		std::swap ( bits_, temp.bits_ );
+		std::swap ( nbits_, temp.nbits_ );
 	}
 
-	void shrink_to_fit()
-	{
 		// Discard unused, trailing vector cells
 		// eliminates any unused blocks at the end of the storage vector that may have 
 		// accrued after calls to erase (you are in effect, supporting on-demand, "shrink-to-fit"
 		// storage allocation policy, but not forcing it).
-
-		// just call vector::resize
-		// determine how many words are being used
-		bits_.resize (size ());
+	void shrink_to_fit()
+	{
+		std::cout << "shrinking from " << capacity ();
+		bits_.resize (capacity ());
+		clean_word ( bits_.back () );
+		std::cout << " to" << capacity () << " words";
 	}
 
 	// Bitwise ops	
-	Bitproxy operator[]( size_t bitpos ) { return Bitproxy ( *this, bitpos ); }
+	Bitproxy operator[]( size_t bitpos )
+	{
+		if ( empty () ) throw std::logic_error ( "out of bounds" );
+		return Bitproxy ( *this, bitpos );
+	}
 
-	bool operator[]( size_t const& bitpos ) const { return read_bit ( bitpos ); }
+	bool operator[]( size_t const& bitpos ) const
+	{
+		if ( empty () ) throw std::logic_error ( "out of bounds" );
+		return read_bit ( bitpos );
+	}
 
 	bool at( size_t const& bitpos ) const { return read_bit ( bitpos ); }
 
@@ -342,23 +434,6 @@ public:
 		return new_b;
 	}
 
-	void left_shift_at( size_t const& bitpos )
-	{
-		for ( auto i { bitpos }; i < nbits_ - 1; ++i ) {
-			assign_bit ( i, read_bit ( i + 1 ) );
-			// assign_bit ( wrap_index ( i ), read_bit ( wrap_index ( i + 1 ) ) );
-		}
-	}
-
-	void right_shift_at(size_t const& bitpos)
-	{
-		for ( auto i { nbits_ - 1 }; i >= 0; --i ) {
-			//assign_bit ( wrap_index ( i + 1 ), read_bit ( wrap_index ( i ) ) );
-			assign_bit ( i, read_bit (  i - 1  ) );
-			std::cout << to_string() << std::endl;
-		}
-	}
-
 	// Shift operators
 	BitArray operator<<( unsigned int shift_amt ) const // shift temp left
 	{
@@ -370,14 +445,39 @@ public:
 		auto temp = *this;
 		return temp.operator>>=( shift_amt );
 	}
-	BitArray& operator<<=( unsigned int shift_amt ) // shift self left
+
+	BitArray& operator<<=( unsigned int const& shift_amt ) // shift self left
 	{
-		left_shift_at ( 0 );
+		if (shift_amt >= nbits_)
+		{
+			reset ();
+		}
+		else {
+			for ( size_t index {0}; index < nbits_; ++index ) {
+				if ( index < nbits_ - shift_amt )
+					assign_bit ( index, read_bit ( index + shift_amt ) );
+				else
+					assign_bit ( index, false );
+			}
+		}
 		return *this;
 	}
-	BitArray& operator>>=( unsigned int shift_amt ) // shift self right
+
+	BitArray& operator>>=( unsigned int const& shift_amt ) // shift self right
 	{
-		right_shift_at ( 0 );
+		if ( shift_amt >= nbits_ ) {
+			reset ();
+		}
+		else {
+			for ( auto index { nbits_ }; index > 0; --index ) {
+				auto const relative_index = index - 1;
+				if ( relative_index >= shift_amt )
+					assign_bit ( relative_index, read_bit ( relative_index - shift_amt ) );
+				else
+					assign_bit ( relative_index, false );
+			}
+		}
+
 		return *this;
 	}
 
@@ -401,12 +501,12 @@ public:
 	// Comparison ops
 	// these should compare the objects lexicographically
 	// (as if they were strings, in dictionary order)
-	auto operator==( BitArray<IType> const& b ) -> bool { return to_string () == b.to_string (); }
-	auto operator!=( BitArray const& b ) -> bool { return !( operator==(b) ); }
-	auto operator<( BitArray const& b ) -> bool { return to_string () < b.to_string (); }
-	auto operator<=( BitArray const& b ) -> bool { return operator<( b ) || operator==( b ); }
-	auto operator>( BitArray const& b ) -> bool { return to_string () > b.to_string (); }
-	auto operator>=( BitArray const& b ) -> bool { return operator>( b ) || operator==( b ); }
+	auto operator==( BitArray<IType> const& b ) -> bool { return comp ( b ) == 0; }
+	auto operator!=( BitArray const& b ) -> bool { return comp ( b ) != 0; }
+	auto operator<( BitArray const& b ) -> bool { return comp ( b ) > 0; }
+	auto operator<=( BitArray const& b ) -> bool { return comp ( b ) >= 0; }
+	auto operator>( BitArray const& b ) -> bool { return comp ( b ) < 0; }
+	auto operator>=( BitArray const& b ) -> bool { return comp ( b ) <= 0; }
 
 	// Counting ops
 	size_t size() const { return nbits_; } // Number of bits in use in the vector
@@ -426,6 +526,17 @@ public:
 		return false;
 	}
 
+/// <summary>
+/// Resets this instance by making every bit zero.
+/// </summary>
+	void reset ()
+	{
+		for ( auto i { 0 }; i < nbits_; ++i)
+		{
+			assign_bit ( i, false );
+		}
+	}
+
 	// Stream I/O (define these in situ)
 	friend auto operator<<( std::ostream& os, BitArray const& obj ) -> std::ostream&
 	{
@@ -433,44 +544,35 @@ public:
 	}
 
 	// overwrites it's bitarray argument's container
-	friend auto operator>>( std::istream& is, BitArray& obj ) -> std::istream&
-	{
-		IType word {};
-		obj.bits_.clear ();
-		obj.bits_.shrink_to_fit ();
-
-		auto count { 0 };
-		auto const max_size { sizeof ( IType ) };
-
-		while ( is )
-		{
-			auto const next_char = is.peek ();
-			if ( next_char == static_cast<int> ( is.eof () ) ) { break; }
-			if ( next_char != '0' && next_char != '1' ) // it's okay if the character is a whitespace
-			{
-				if ( !std::isspace ( next_char, std::locale ( "en_US.UTF8" ) ) ) { break; } // illegal character found
-				is.seekg ( 1 );                                                             // skip whitespace character
-				continue;
+	friend auto operator>>( std::istream& is, BitArray& obj ) -> std::istream& {
+		BitArray temp;
+		char c;
+		while ( is && is >> std::skipws >> c ) {
+			if ( c != '0' && c != '1' ) {
+				is.unget ();
+				if ( temp.empty () ) {
+					is.setstate ( std::ios::failbit );
+					return is;
+				}
+				break;
 			}
 
-			if ( count == max_size )
-			{
-				obj.bits_.push_back ( word );
-				word = 0;
-				count = 0;
-			}
-			else { word <<= 1; }
-
-			if ( is.get () == '1' )
-			{
-				// if is.get() == '0' then it doesn't matter as it has already been 
-				// shifted and so a zero is already in the least significant spot
-				word |= 1u;
-			}
-			count++;
+			temp += c == '1';
 		}
-
+		obj = std::move ( temp );
 		return is;
+	}
+
+	bool empty () const
+	{
+		return size () == 0;
+	}
+
+	void clear ()
+	{
+		bits_.clear ();
+		bits_.shrink_to_fit ();
+		nbits_ = 0;
 	}
 
 	// String conversion

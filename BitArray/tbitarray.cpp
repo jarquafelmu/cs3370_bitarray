@@ -1,16 +1,3 @@
-// Project: BitArray
-// Name: Sam Terrazas
-// File: tbitarray.cpp
-// Created: 04/05/2019 9:21 AM
-// Updated: 04/18/2019 2:20 PM
-// 
-// I declare that the following source code was written by me, or provided
-// by the instructor for this project. I understand that copying source
-// code from any other source, providing source code to another student, 
-// or leaving my code on a public web site constitutes cheating.
-// I acknowledge that  If I am found in violation of this policy this may result
-// in a zero grade, a permanent record on file and possibly immediate failure of the class. 
-
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
@@ -24,7 +11,7 @@ int main()
 {
 	// Test exceptions
 	BitArray<> b;
-	throw_(b[0],logic_error); // BUG: Fails to throw logic_error on index into empty BitArray
+	throw_(b[0],logic_error);
 	throw_(b.toggle(0),logic_error);
 	const BitArray<> b1 { b }; // Test copy constructor
 	throw_(b1[0],logic_error);
@@ -47,7 +34,6 @@ int main()
 	test_(b != b2);
 	test_(!b3[2]);
 	b3[2] = true;
-	std::cout << b3.to_string () << std::endl;
 	test_(b3[2]);
 	test_(b2 != b3);
 	test_(b2.to_string() == "00000");
@@ -65,12 +51,10 @@ int main()
 	BitArray<> x { "011010110" }; // Also tests string constructor
 	test_(x.count() == 5);
 	test_(x.any());
-	cout << "Before shift: " << x.to_string () << endl;
-	cout << "After shift: " << ( x >> 6 ).to_string () << endl;
-	//test_((x << 6).to_string() == "110000000"); // BUG test fails for bit shift
+	test_((x << 6).to_string() == "110000000");
 	test_((x >> 6).to_string() == "000000011");
-	test_((x <<= 3).to_string() == "010110000");
-	test_((x >>= 3).to_string() == "000010110");
+	test_((x <<= 3).to_string() == "010110000"); 
+	test_((x >>= 3).to_string() == "000010110"); 
 	BitArray<> y { ~x };
 	nothrow_(x.toggle());
 	test_(x == y);
@@ -119,7 +103,7 @@ int main()
 	test_(!is2);
 	test_(b3.to_string() == "0101");
 
-	BitArray<> b5 { "11111111111111111111111111000000000000000000000000000011" };
+	BitArray<> b5 { "11111111111111111111111111000000000000000000000000000011" }; // BUG: Fail and logic_error "out of range" exception thrown
 	test_(b5.slice(23,10) == BitArray<>("1110000000"));
 	size_t n = b2.size ();
 	b2.insert ( 3, b5 );
